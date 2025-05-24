@@ -4,7 +4,6 @@ import time
 import numpy as np
 import json
 
-# initialize the simulation
 p.connect(p.GUI) 
 # p.connect(p.DIRECT) # no graph
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -95,51 +94,60 @@ def read_messages(receiver_id, queue):
             inbox.append(msg)
     return inbox
 
-# task distribution for anegnt1
+# Agent1
+max_retries = 3
+claim_success = False
+priority = 1
+attempt = 0
 agent1_task = assign_task(agent1_id, task_pool)
-task_pool.remove(agent1_task)
-msg1 = create_protocol_message("agent1",  "agent2", agent1_task)
-message_queue.append(msg1)
-print("Agent1 sends:", json.dumps(msg1, indent=2))
-print("Which means: agent1 claims", task_name_map[agent1_task])
 
-# Agent2
-agent2_inbox = read_messages("agent2", message_queue)
-claimed_task = [msg['task'] for msg in agent2_inbox]
+while attempt < max_retries and not claim_success:
+    
+    print(f"\n Agent1 attempt #{attempt} to claim {task_name_map[agent1_task]} with priority {priority}")
 
-# agent2 first try the nearest object
-agent2_original_task = assign_task(agent2_id, task_pool)
-print(f'Agent2 initially planned to take:',  task_name_map[agent2_original_task])
+    msg1 = create_protocol_message(
+        sender_id="agent1",
+        receiver_id="agent2",
+        task_id=agent1_task,
+        msg_type="task_claim",
+        priority=priority,
+        response_required=True,
+        valid_duration=5.0
+    )
+    message_queue.append(msg1)
 
-# detect whether conflict:
-if agent2_original_task in claimed_task:
-    print(f"Conflict detected: {task_name_map[agent2_original_task]} alrealdy claimed by Agent1")
-    # resign tasks
-    agent2_task = assign_task(agent2_id, task_pool, exclude_list=claimed_task)
-    print(f"Agent2 resassigns to:", task_name_map[agent2_task])
-else:
+    print("Agent1 sends:", json.dumps(msg1, indent=2))
+    print("Which means: agent1 claims", task_name_map[agent1_task])
+
+    # simulate delay
+    time.sleep(0.2)
+
+    # let agent2 react immediatly
+    agent2_original_task = assign_task(agent2_id, task_pool)
     agent2_task = agent2_original_task
-    print(f"No conflict. Agent2 keeps original task:", task_name_map[agent2_task])
+    print(f"Agent2 initially planned to take: {task_name_map[agent2_original_task]}")
 
-# renew task pool
-if agent2_task in task_pool:
-    task_pool.remove(agent2_task)
+    agent2_inbox = read_messages("agent2", message_queue)
+    responses = []
 
-# send task claim
-msg2 = create_protocol_message("agent2",  "agent1", agent2_task)
-message_queue.append(msg2)
-print("Agent2 sends message:", msg2)
-print("Which means: assigned task =", task_name_map[agent2_task])
+    # select the highest priority whith  the latest claim
+    latest_claims = {}
+    for raw_msg in agent2_inbox:
+        if time.time() > raw_msg["valid_until"]:
+            continue
 
-# generate response to Agent1
-responses = []
-for msg in agent2_inbox:
-    if time.time() > msg["valid_until"]:
-        print(f"Message expired: {msg}")
-        continue
+        if raw_msg["msg_type"] == "task_claim":
+            claimed_task = raw_msg["task"]
+            sender_priority = raw_msg["priority"]
 
-    if msg["msg_type"] == "task_claim":
+            if claimed_task not in latest_claims or sender_priority > latest_claims[claimed_task]["priority"]:
+                latest_claims[claimed_task] = raw_msg
+
+    # response only once for each task
+    for msg in latest_claims.values():
         claimed_task = msg["task"]
+        sender_priority = msg["priority"]
+
         response = create_protocol_message(
             sender_id="agent2",
             receiver_id="agent1",
@@ -149,35 +157,67 @@ for msg in agent2_inbox:
             response_required=False,
             valid_duration=3.0
         )
-            
-        response["status"] = "rejected" if claimed_task == agent2_original_task else "accepted"
-        message_queue.append(response)
-        responses.append(response)
+
+        if claimed_task == agent2_task:
+            if sender_priority > 1:
+                print(f"Conflict: agent2 also wants {task_name_map[claimed_task]}, but agent1 has higher priority ({sender_priority}). Giving up.")
+                response["status"] = "accepted"
+                agent2_task = assign_task(agent2_id, task_pool, exclude_list=[claimed_task])
+                print(f"Agent2 reassigns to: {task_name_map[agent2_task]}")
+            else:
+                print(f"Conflict: agent2 keeps {task_name_map[claimed_task]} (priority too low). Rejecting.")
+                response["status"] = "rejected"
+        else:
+            response["status"] = "accepted"
+
+    message_queue.append(response)
+    responses.append(response)
+
+    #  check responses
+    agent1_inbox = read_messages("agent1", message_queue)
+    response_found = False
+
+    for msg in agent1_inbox:
+        if msg["msg_type"]  == "response" and msg["task"] == agent1_task:
+            if msg["status"] == "accepted":
+                print(f"Agent1's claim for {task_name_map[agent1_task]} was accepted")
+                claim_success = True
+                break
+            elif msg["status"] == "rejected":
+                print(f"Agent1's claim for {task_name_map[agent1_task]} was rehjected")
+    if not claim_success:
+        attempt += 1
+        priority += 1 # increase the priority for the next round
+
+if not claim_success:
+    print(f"Agent1 failed to claim {task_name_map[agent1_task]} after {max_retries} attempts.")
+else:
+    if agent1_task in task_pool:
+        task_pool.remove(agent1_task)
+
+# Agent2
+agent2_inbox = read_messages("agent2", message_queue)
+claimed_task = [msg['task'] for msg in agent2_inbox]
+
+# renew task pool
+if agent2_task in task_pool:
+    task_pool.remove(agent2_task)
+
+# send a fianl claim
+msg2 = create_protocol_message("agent2", "agent1", agent2_task)
+message_queue.append(msg2)
+print("Agent2 sends message:", msg2)
+print("Which means: assigned task =", task_name_map[agent2_task])
 
 for r in responses:
     print("Agent2 responds:", json.dumps(r, indent=2))
 
-# agent1 check whether accept task request
-agent1_inbox = read_messages("agent1", message_queue)
-agent1_claimed_task = agent1_task # before assigned task
-response_found = False
-
-for msg in agent1_inbox:
-    if msg["msg_type"]  == "response" and msg["task"] == agent1_claimed_task:
-        response_found = True
-        if msg["status"] == "accepted":
-            print(f"Agent1's claim for {task_name_map[agent1_claimed_task]} was accepted")
-        elif msg["status"] == "rejected":
-            print(f"Agent1's claim for {task_name_map[agent1_claimed_task]} was rehjected")
-            # In the future we can choose tasks for agent1 again or promote the priority and resend
-        break
-
-if not response_found:
-    print("Agent1 did not receive any response yet.")
-
 # acquire object positons
 agent1_target = p.getBasePositionAndOrientation(agent1_task)[0]
 agent2_target = p.getBasePositionAndOrientation(agent2_task)[0]
+print(f"Agent1 target object id: {agent1_task}, assigned: {task_name_map[agent1_task]}")
+print(f"Agent2 target object id: {agent2_task}, assigned: {task_name_map[agent2_task]}")
+
 
 # simulation for a duration
 for i in range(1000):
