@@ -154,3 +154,64 @@ multi_agent_mpd/
 - Begin preparing logs/visuals for **system explanation or publication**.
 
 ---
+
+---
+
+## 🔄 Phase 3: Response Handling & Negotiation Feedback (Day 5)
+
+### 🗓️ Date: 2025-05-23
+
+### ✅ Implemented Features
+
+- 📡 **Structured Messaging Protocol Extended**:
+  - Introduced additional fields into messages:
+    - `msg_type`: "task_claim" or "response"
+    - `response_required`: whether a reply is expected
+    - `valid_until`: timestamp when message expires
+    - `status`: "pending", "accepted", or "rejected"
+    - `priority`, `timestamp`
+
+- 🤖 **Agent2: Message Interpretation & Response**:
+  - Reads task claims from agent1;
+  - If agent2's target conflicts → returns `response: rejected`;
+  - Otherwise → returns `response: accepted`.
+
+- 📩 **Agent2 Response Messages**:
+  - Appends response back to the global `message_queue`;
+  - Each message carries full protocol-compliant content.
+
+- 🧠 **Agent1: Response Parsing & Feedback**:
+  - Reads `response` messages from inbox;
+  - If claim was accepted → keeps current task;
+  - If rejected (not occurred in current test) → can trigger reassignment in future.
+
+- 🖨️ **Console Output** clearly reflects decision process:
+Agent1 sends: task_claim for cube_2
+Agent2 initially planned cube_0 → no conflict
+Agent2 responds: accepted
+✅ Agent1's claim for cube_2 was accepted
+
+---
+
+### 📈 System Status After Day 5
+
+| Component                          | Status  |
+|-----------------------------------|---------|
+| Task claim protocol (message v2)  | ✅ Done |
+| Validity & timestamp mechanism    | ✅ Done |
+| Conflict detection & reply        | ✅ Done |
+| Agent1 claim response parsing     | ✅ Done |
+| Console-based traceability        | ✅ Done |
+
+---
+
+### 🔜 Coming in Day 6
+
+- 🥇 Priority-based task arbitration (agent1 vs agent2);
+- 🔁 Multi-round claim negotiation;
+- ⏱️ Message timeouts & re-request;
+- 📡 Simulated message filtering (by type / importance);
+- 📦 Logging or exporting protocol history (for evaluation / paper).
+
+---
+
