@@ -1,4 +1,3 @@
-
 import pybullet as p
 import pybullet_data
 import time
@@ -45,61 +44,80 @@ def create_protocol_message(sender_id, receiver_id, task_id, msg_type="task_clai
         "timestamp": time.time()
     }
 
+def send_claim(sender_id, task_id, priority, recipients, queue):
+    for target in recipients:
+        msg = create_protocol_message(
+            sender_id=sender_id,
+            receiver_id=target,
+            task_id=task_id,
+            msg_type="task_claim",
+            priority=priority,
+            response_required=True,
+            valid_duration=5.0
+        )
+        queue.append(msg)
+    print(f"{sender_id} sends claim for: {task_name_map[task_id]} with priority {priority}")
+
 def read_messages(receiver_id, queue):
     # agent scans the queue and read messages
     return [msg for msg in queue if msg["receiver"] == receiver_id]
 
-def agent2_respond(agent2_id, task_pool, message_queue, task_name_map):
-    agent2_original_task = assign_task(agent2_id, task_pool)
-    agent2_task = agent2_original_task
-    print(f"Agent2 initially planned to take: {task_name_map[agent2_task]}")
-
-    agent2_inbox = read_messages("agent2", message_queue)
+def respond_to_claims(self_name, self_id, current_task, queue, task_pool):
+    inbox = read_messages(self_name, queue)
+    latest_claims = {}
     responses = []
 
-    latest_claims = {}
-    for raw_msg in agent2_inbox:
-        if time.time() > raw_msg["valid_until"]:
+    for msg in inbox:
+        if msg["msg_type"] != "task_claim":
             continue
-        if raw_msg["msg_type"] == "task_claim":
-            claimed_task = raw_msg["task"]
-            sender_priority = raw_msg["priority"]
-            if claimed_task not in latest_claims or sender_priority > latest_claims[claimed_task]["priority"]:
-                latest_claims[claimed_task] = raw_msg
+        claimed_task = msg["task"]
+        sender_priority = msg["priority"]
+        if claimed_task not in latest_claims or sender_priority > latest_claims[claimed_task]["priority"]:
+            latest_claims[claimed_task] = msg
 
     for msg in latest_claims.values():
         claimed_task = msg["task"]
         sender_priority = msg["priority"]
 
-        response = create_protocol_message("agent2", "agent1", claimed_task, msg_type="response", priority=1, response_required=False, valid_duration=3.0)
+        response = create_protocol_message(
+            sender_id=self_id,
+            receiver_id=msg["sender"],
+            task_id=claimed_task,
+            msg_type="response",
+            priority=1,
+            response_required=False,
+            valid_duration=3.0
+        )
 
-        if claimed_task == agent2_task:
+        if claimed_task == current_task:
             if sender_priority > 1:
-                print(f"Conflict: agent2 also wants {task_name_map[claimed_task]}, but agent1 has higher priority ({sender_priority}). Giving up.")
+                print(f"{self_name} gives up {task_name_map[claimed_task]} to {msg['sender']} with higher priority ({sender_priority})")
                 response["status"] = "accepted"
-                agent2_task = assign_task(agent2_id, task_pool, exclude_list=[claimed_task])
-                print(f"Agent2 reassigns to: {task_name_map[agent2_task]}")
+                current_task = assign_task(self_id, task_pool, exclude_list=[claimed_task])
+                print(f"{self_name} reassigns to: {task_name_map[current_task]}")
             else:
-                print(f"Conflict: agent2 keeps {task_name_map[claimed_task]} (priority too low). Rejecting.")
+                print(f"{self_name} keeps {task_name_map[claimed_task]}, rejects claim from {msg['sender']}")
                 response["status"] = "rejected"
         else:
             response["status"] = "accepted"
 
-        message_queue.append(response)
+        queue.append(response)
         responses.append(response)
 
-    if agent2_task in task_pool:
-        task_pool.remove(agent2_task)
+    return current_task
 
-    msg2 = create_protocol_message("agent2", "agent1", agent2_task)
-    message_queue.append(msg2)
-    print("Agent2 sends message:", msg2)
-    print("Which means: assigned task =", task_name_map[agent2_task])
-
-    for r in responses:
-        print("Agent2 responds:", json.dumps(r, indent=2))
-
-    return agent2_task
+def check_response(agent_id, task_id, queue):
+    inbox = read_messages(agent_id, queue)
+    for msg in inbox:
+        if msg["msg_type"] == "response" and msg["task"] == task_id:
+            if msg["status"] == "accepted":
+                print(f"{agent_id}'s claim for {task_name_map[task_id]} was accepted")
+                return True
+            else:
+                print(f"{agent_id}'s claim for {task_name_map[task_id]} was rejected by {msg['sender']}")
+                return False
+    print(f"{agent_id} received no response for task {task_name_map[task_id]}")
+    return False
 
 # === Simulation Setup ===
 p.connect(p.GUI)
@@ -109,10 +127,12 @@ planeId = p.loadURDF("plane.urdf")
 
 agent1_start = [0, -1, 0.5]
 agent2_start = [0, 1, 0.5]
+agent3_start = [-1, 0, 0.5]
 agent_orientation = p.getQuaternionFromEuler([0, 0, 0])
 
 agent1_id = p.loadURDF("r2d2.urdf", agent1_start, agent_orientation)
 agent2_id = p.loadURDF("r2d2.urdf", agent2_start, agent_orientation)
+agent3_id = p.loadURDF("r2d2.urdf", agent3_start, agent_orientation)
 
 message_queue = []
 num_objects = 3
@@ -127,52 +147,65 @@ for i in range(num_objects):
 
 task_pool = object_ids.copy()
 
-# === Agent1: Task Claim Attempt ===
+# === Agent: Task Claim Attempt ===
+
+priority_start = 1
 max_retries = 3
-claim_success = False
-priority = 1
-attempt = 0
-agent1_task = assign_task(agent1_id, task_pool)
 
-while attempt < max_retries and not claim_success:
-    print(f"\nAgent1 attempt #{attempt} to claim {task_name_map[agent1_task]} with priority {priority}")
-    msg1 = create_protocol_message("agent1", "agent2", agent1_task, priority=priority)
-    message_queue.append(msg1)
-    print("Agent1 sends:", json.dumps(msg1, indent=2))
-    print("Which means: agent1 claims", task_name_map[agent1_task])
-    time.sleep(0.2)
+agent_state = {
+    "agent1":  {"id": agent1_id,  "task": None, "success": False, "priority": priority_start},
+    "agent2":  {"id": agent2_id,  "task": None, "success": False, "priority": priority_start},
+    "agent3":  {"id": agent3_id,  "task": None, "success": False, "priority": priority_start},
+}
+
+for agent_name, state in agent_state.items():
+    state["task"] = assign_task(state["id"], task_pool)
+
+for attempt in range(max_retries):
+    print(f"\n=== Attempt #{attempt} ===")
     
-    # let agent2 react during agent1 runtime in order to avoid time sequence problem
-    agent2_task = agent2_respond(agent2_id, task_pool, message_queue, task_name_map)
+    # Phase 1: broadcast claims
+    for sender_name, sender_state in agent_state.items():
+        if not sender_state["success"]:
+            receivers = [a for a in agent_state if a != sender_name]
+            send_claim(sender_name, sender_state["task"], sender_state["priority"], receivers, message_queue)
 
-    agent1_inbox = read_messages("agent1", message_queue)
-    for msg in agent1_inbox:
-        if msg["msg_type"] == "response" and msg["task"] == agent1_task:
-            if msg["status"] == "accepted":
-                print(f"Agent1's claim for {task_name_map[agent1_task]} was accepted")
-                claim_success = True
-                break
-            elif msg["status"] == "rejected":
-                print(f"Agent1's claim for {task_name_map[agent1_task]} was rejected")
-    if not claim_success:
-        attempt += 1
-        priority += 1
+    time.sleep(0.2)
 
-if not claim_success:
-    print(f"Agent1 failed to claim {task_name_map[agent1_task]} after {max_retries} attempts.")
-else:
-    if agent1_task in task_pool:
-        task_pool.remove(agent1_task)
+    # Phase 2: process others' claims
+    for agent_name, state in agent_state.items():
+        state["task"] = respond_to_claims(agent_name, state["id"], state["task"], message_queue, task_pool)
+
+    # Phase 3: check results
+    all_success = True
+    for agent_name, state in agent_state.items():
+        if not state["success"]:
+            state["success"] = check_response(agent_name, state["task"], message_queue)
+
+        if state["success"]:
+            if state["task"] in task_pool:
+                task_pool.remove(state["task"])
+        else:
+            state["priority"] += 1
+            state["task"] = assign_task(state["id"], task_pool, exclude_list=[state["task"]])
+            all_success = False
+    
+    if all(state["success"] for state in agent_state.values()):
+        break
+
 
 # === Execute Simulation ===
-agent1_target = p.getBasePositionAndOrientation(agent1_task)[0]
-agent2_target = p.getBasePositionAndOrientation(agent2_task)[0]
-print(f"Agent1 target object id: {agent1_task}, assigned: {task_name_map[agent1_task]}")
-print(f"Agent2 target object id: {agent2_task}, assigned: {task_name_map[agent2_task]}")
+agent1_target = p.getBasePositionAndOrientation(agent_state["agent1"]["task"])[0]
+agent2_target = p.getBasePositionAndOrientation(agent_state["agent2"]["task"])[0]
+agent3_target = p.getBasePositionAndOrientation(agent_state["agent3"]["task"])[0]
+print(f"Agent1 target object id: {agent_state['agent1']['task']}, assigned: {task_name_map[agent_state['agent1']['task']]}")
+print(f"Agent2 target object id: {agent_state['agent2']['task']}, assigned: {task_name_map[agent_state['agent2']['task']]}")
+print(f"Agent3 target object id: {agent_state['agent3']['task']}, assigned: {task_name_map[agent_state['agent3']['task']]}")
 
 for _ in range(1000):
     move_towards(agent1_id, agent1_target)
     move_towards(agent2_id, agent2_target)
+    move_towards(agent3_id, agent3_target)
     p.stepSimulation()
     time.sleep(1./240)
 
