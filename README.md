@@ -257,3 +257,79 @@ Agent2 responds: accepted
         解决因重复处理 claim 导致多个 accepted 的问题。
 
         输出结构清晰，能够准确反映 claim → response → reassign 的完整过程。
+        📘 Multi-Agent MCP Task Allocation - Development Log (Phase 2)
+
+    重构日志：结构化通信系统模块化封装 + 冲突处理评分机制接入
+    更新日期：2025年5月24日
+
+🧱 基础结构变更
+✅ 模块拆分
+
+    protocol.py
+    封装消息格式、收发逻辑与回应检查：
+
+        create_protocol_message(...)
+
+        read_messages(...)
+
+        check_response(...)（支持“默认接受”机制）
+
+    agent.py
+    定义 Agent 类及其行为（发送claim、回应claim、重新分配等）：
+
+        assign_task(...)
+
+        send_claim(...)
+
+        respond_to_claims(...)
+
+        evaluate_claim(...)：引入评分机制
+
+        set_task_pool(...)：任务池传入接口
+
+        score(...)：计算 agent 对某任务的偏好评分（初始为 -距离）
+
+⚙️ 通信与决策逻辑变更
+🧠 协商机制优化
+
+    引入更通用的任务评分函数 score(agent, task_id)：
+
+        当前为 score = -distance + 任务价值（可拓展）
+
+        所有 Agent 在回应冲突请求时，通过 evaluate_claim() 比较双方评分是否让步
+
+    实现更合理的默认接受机制：
+
+        若未收到任何回应但任务仍在池中且无人实际持有 → 默认 claim 成功
+
+❗问题修复记录
+
+    修复多个 Agent 同时 claim 同一任务但未全部收到回应时的逻辑混乱；
+
+    解决 Agent.task_pool 多次传参与状态同步冲突；
+
+    加入目标位置 target_pos 设置，避免重复调用 getPosition(...)；
+
+    补充响应时的任务排他性检查，避免重复 assignment；
+
+    加入判空判断，避免 task == None 时错误访问 task_name_map[None]。
+
+📈 当前系统行为（示例）
+
+    支持 3 个 Agent 同步参与任务 claim；
+
+    每轮最大重试次数为 3，按优先级逐步提升；
+
+    任务分配后，小车自动移动至目标物块；
+
+    任务冲突时基于评分逻辑进行判断与让步。
+
+🧩 下一阶段目标（Phase 3）
+
+策略模块替换：从 rule-based 替换为 PPO / Diffusion Policy
+
+性能日志模块化输出：生成可导出 JSON / CSV 格式日志
+
+多轮任务循环支持：任务池动态刷新 + 多任务执行阶段
+
+可视化冲突与成功率演示
