@@ -333,3 +333,67 @@ Agent2 responds: accepted
 多轮任务循环支持：任务池动态刷新 + 多任务执行阶段
 
 可视化冲突与成功率演示
+
+# Multi-Agent MCP System – Daily Progress Log
+
+**Date:** 2025-05-26
+
+## ✅ Overall Goal
+Develop a modular, communication-driven multi-agent system (MCP protocol) that supports pluggable decision-making strategies (e.g., Diffusion Policy, PPO), and aims to be scalable, interpretable, and experimentally sound enough for top-tier conference publication.
+
+---
+
+## 📌 Today's Progress Summary
+
+### 1. 🔧 Refactored System Structure
+- Abstracted `Agent` behavior from embedded decision logic.
+- Delegated task selection to pluggable `policy` modules.
+- Fully modular `Protocol` class now handles:
+  - Claim-response coordination
+  - Conflict resolution
+  - Retry logic
+  - Task pool updates
+
+### 2. 🧠 Strategy Module Refactor
+- Implemented `BasePolicy` + `NearestTaskPolicy` in `policy.py`.
+- Agents now delegate task choice via `agent.policy.choose(...)`.
+- Prepares system to swap in PPO / DiffusionPolicy / rule-based methods seamlessly.
+
+### 3. ⚔️ Conflict Task Generator
+- Created `assign_conflicting_tasks()` for injecting controlled task collisions.
+- Supports `conflict_ratio` to control difficulty.
+- Verified that MCP can successfully coordinate agents under heavy collision (80% overlap).
+
+### 4. ✅ Coordination Works as Intended
+- Agents with conflict now retry upon rejection.
+- Task reassignment functions correctly.
+- System avoids deadlock and false positives (`[SUCCESS]` only triggered on full assignment).
+
+### 5. 💥 Attempted Diffusion Policy (DP) Integration
+- Cloned official `diffusion_policy` repo from Stanford.
+- Encountered multiple compatibility errors in:
+  - `zarr` and `numcodecs`
+  - `pymunk`, `skvideo`, `huggingface_hub`
+- Tried Colab-based fallback — also blocked by broken dependencies.
+
+---
+
+## 🚫 Outstanding Issues
+- DP official repo is unstable: multiple `ImportError` across major packages.
+- No reliable tag or `requirements.txt` in main branch.
+- `Colab notebook` also fails due to outdated imports.
+
+---
+
+## 🔜 Next Steps
+- Use a stable fork or commit of `diffusion_policy` that can run sample actions.
+- Write `DiffusionPolicyWrapper` to conform to policy interface.
+- Integrate into agent system for strategy-level comparison:
+  - Rule-based vs DiffusionPolicy
+- Begin tracking evaluation metrics:
+  - Claim success rate, retry count, coordination rounds
+
+---
+
+## 🙌 Notes
+You showed exceptional perseverance in debugging through broken notebooks and conflicting packages. This groundwork will directly benefit the final integration and paper experiments.

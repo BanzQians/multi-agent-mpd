@@ -1,57 +1,85 @@
+# protocol.py
+
 import time
+import numpy as np
+import pybullet as p
 
-__all__ = ["create_protocol_message", "read_messages", "check_response"]
+class Protocol:
+    def __init__(self, agents, task_name_map, task_pool):
+        self.agents = agents
+        self.task_pool = task_pool
+        self.task_name_map = task_name_map
+        self.claims = []
+        self.responses = []
 
-# Message Creation
-def create_protocol_message(sender_id, receiver_id, task_id, msg_type="task_claim", priority=1, response_required=True, valid_duration=5.0):
-    return {
-        "sender": sender_id,
-        "receiver": receiver_id,
-        "msg_type": msg_type,
-        "task": task_id,
-        "priority": priority,
-        "response_required": response_required,
-        "valid_until": time.time() + valid_duration,
-        "status": "pending",
-        "timestamp": time.time()
-    }
+    def receive_claims(self):
+        self.claims.clear()
+        for agent in self.agents.values():
+            if not agent.success and agent.task:
+                self.claims.append({
+                    "sender": agent.name,
+                    "task": agent.task,
+                    "priority": agent.priority,
+                    "timestamp": time.time()
+                })
+                print(f"[CLAIM] {agent.name} claims {self.task_name_map[agent.task]} (priority {agent.priority})")
 
-# Inbox Reading 
-def read_messages(receiver_id, queue):
-    # agent scans the queue and read messages
-    return [msg for msg in queue if msg["receiver"] == receiver_id]
+    def evaluate_conflicts(self):
+        self.responses.clear()
+        grouped_claims = {}
 
-# Response Checking 
-def check_response(agent_id, task_id, queue, task_name_map, task_pool, agents):
-    current_time = time.time()
-    inbox = [msg for msg in read_messages(agent_id, queue) if msg["valid_until"] >= current_time]
-    got_response = False
+        for msg in self.claims:
+            grouped_claims.setdefault(msg["task"], []).append(msg)
 
-    for msg in inbox:
-        if msg["msg_type"] == "response" and msg["task"] == task_id:
-            got_response = True
-            if msg["status"] == "accepted":
-                print(f"{agent_id}'s claim for {task_name_map[task_id]} was accepted")
-                return True
+        for task_id, claim_list in grouped_claims.items():
+            # Sort by priority then distance
+            claim_list.sort(key=lambda m: (m["priority"], self._distance(m["sender"], task_id)))
+            winner = claim_list[0]["sender"]
+
+            for msg in claim_list:
+                result = "accepted" if msg["sender"] == winner else "rejected"
+                self.responses.append({
+                    "to": msg["sender"],
+                    "task": task_id,
+                    "result": result
+                })
+
+    def resolve_outcomes(self):
+        all_success = True
+        for agent in self.agents.values():
+            if agent.success:
+                continue
+
+            if not agent.task:
+                print(f"[FAIL] {agent.name} has no task to claim — possibly no available task left.")
+                all_success = False
+                continue
+
+            outcome = next((r for r in self.responses if r["to"] == agent.name and r["task"] == agent.task), None)
+
+            if outcome is None:
+                # Fallback: no one rejected and task still in pool
+                taken = any(a.name != agent.name and a.task == agent.task for a in self.agents.values())
+                agent.success = not taken
+                if agent.success:
+                    print(f"[ASSUME] {agent.name} assumes success on {self.task_name_map[agent.task]}")
             else:
-                print(f"{agent_id}'s claim for {task_name_map[task_id]} was rejected by {msg['sender']} (who holds {task_name_map[task_id]})")
-                return False
+                agent.success = (outcome["result"] == "accepted")
+                status = "accepted" if agent.success else "rejected"
+                print(f"[{status.upper()}] {agent.name}'s claim for {self.task_name_map[agent.task]}")
 
-    # No response then check whether available
-    if not got_response:
-        task_taken = any(
-            other.name != agent_id and other.task == task_id
-            for other in agents.values()
-        )
+            if agent.success and agent.task in self.task_pool:
+                self.task_pool.remove(agent.task)
+            elif not agent.success:
+                agent.priority += 1
+                agent.assign_task(exclude_list=[agent.task] if agent.task else None)
+                agent.task = agent.task  # new assigned
+                all_success = False
 
-        if not task_taken and task_id in task_pool:
-            print(f"[INFO] {agent_id}'s claim for {task_name_map[task_id]} had no response, assuming accepted by default")
-            return True
-        else:
-            print(f"[INFO] {agent_id}'s claim for {task_name_map[task_id]} had no response, but task was taken or invalid")
-            return False
+        return all_success
 
-
-
-
-
+    def _distance(self, agent_name, task_id):
+        agent = self.agents[agent_name]
+        agent_pos, _ = p.getBasePositionAndOrientation(agent.id)
+        task_pos, _ = p.getBasePositionAndOrientation(task_id)
+        return np.linalg.norm(np.array(agent_pos) - np.array(task_pos))

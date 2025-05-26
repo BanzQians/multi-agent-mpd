@@ -2,9 +2,10 @@ import pybullet as p
 import pybullet_data
 import time
 import numpy as np
-import json
-from protocol import create_protocol_message, read_messages, check_response
 from agent import Agent
+from protocol import Protocol
+from policy import NearestTaskPolicy, DiffusionPolicyStub
+from task_conflict_gen import assign_conflicting_tasks
 
 # === Simulation Setup ===
 p.connect(p.GUI)
@@ -34,63 +35,31 @@ agent_starts = {
 agent_orientation = p.getQuaternionFromEuler([0, 0, 0])
 agents = {}
 
-# Load agents
+# policy = NearestTaskPolicy()
+policy = DiffusionPolicyStub()
+
 for name, pos in agent_starts.items():
     uid = p.loadURDF("r2d2.urdf", pos, agent_orientation)
-    agents[name] = Agent(name, uid, task_name_map)
+    agents[name] = Agent(name, uid, task_name_map, policy)
 
-# Distribute tasks
-for agent in agents.values():
-    agent.set_task_pool(task_pool)
-    agent.assign_task()
-    print(f"[DEBUG] {agent.name} assigned task {agent.task}")
+# Distribute initial tasks
+assign_conflicting_tasks(agents, task_pool, task_name_map, conflict_ratio=0.8)
 
-# === Main Coordination Loop ===
-priority_start = 1
+# === Coordination Loop via Protocol ===
+protocol = Protocol(agents, task_name_map, task_pool)
+
 max_retries = 3
-message_queue = []
-
 for attempt in range(max_retries):
     print(f"\n=== Attempt #{attempt} ===")
-
-    # Phase 1: send claims
-    for agent_name, agent in agents.items():
-        if not agent.success:
-            if agent.task is None:
-                print(f"[SKIP] {agent_name} has no task to claim.")
-                continue
-            recipients = [a for a in agents if a != agent_name]
-            agent.send_claim(recipients, message_queue)
-
-    time.sleep(0.2)
-
-    # Phase 2: process responses
-    for agent in agents.values():
-        if not agent.success:
-            agent.respond_to_claims(message_queue, agents)
-
-    # Phase 3: check results
-    all_success = True
-    for agent in agents.values():
-        if not agent.success:
-            result = check_response(agent.name, agent.task, message_queue, task_name_map, task_pool, agents)
-            agent.success = result
-            if not result:
-                agent.task = None  # Clear failed task to reassign
-
-        if agent.success and agent.task in task_pool:
-            task_pool.remove(agent.task)
-        elif not agent.success:
-            agent.priority += 1
-            agent.assign_task(exclude_list=[agent.task] if agent.task else None)
-            all_success = False
-
-    if all_success:
+    protocol.receive_claims()
+    protocol.evaluate_conflicts()
+    success = protocol.resolve_outcomes()
+    if success:
+        print("[SUCCESS] All agents assigned.")
         break
 
-
 # === Execute Simulation ===
-def move_towards(agent_id, target_pos, agent_orientation, step_size=0.01):
+def move_towards(agent_id, target_pos, orientation, step_size=0.01):
     pos, _ = p.getBasePositionAndOrientation(agent_id)
     pos = np.array(pos)
     direction = np.array(target_pos) - pos
@@ -98,8 +67,9 @@ def move_towards(agent_id, target_pos, agent_orientation, step_size=0.01):
     if norm > step_size:
         direction = direction / norm * step_size
     new_pos = pos + direction
-    p.resetBasePositionAndOrientation(agent_id, new_pos.tolist(), agent_orientation)
+    p.resetBasePositionAndOrientation(agent_id, new_pos.tolist(), orientation)
 
+# Move agents toward target
 for agent in agents.values():
     if agent.task is not None:
         pos = p.getBasePositionAndOrientation(agent.task)[0]
