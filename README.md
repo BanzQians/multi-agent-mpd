@@ -397,3 +397,80 @@ Develop a modular, communication-driven multi-agent system (MCP protocol) that s
 
 ## 🙌 Notes
 You showed exceptional perseverance in debugging through broken notebooks and conflicting packages. This groundwork will directly benefit the final integration and paper experiments.
+
+# Project Progress Log - Multi-Agent Communication + Policy Integration
+
+📅 Date Range: 2025-05-26 to 2025-06-02
+
+---
+
+## 🧠 Project Goal
+
+Design a structured multi-agent control framework powered by a modular **Multi-Agent Communication Protocol (MCP)** that supports interchangeable policy modules (e.g., Diffusion Policy, PPO, Rule-based). The goal is to enable efficient coordination between agents, support plug-and-play strategy evaluation, and build toward publishable experimental benchmarks.
+
+---
+
+## ✅ 1. Multi-Agent Communication Protocol (MCP)
+
+- Implemented a **Claim-Response coordination mechanism**:
+  - Agents claim tasks with priority; receivers evaluate conflicts and may yield based on scoring.
+  - Multi-round re-attempt and priority escalation are supported.
+- Initial conflicting task assignment generator implemented.
+- Protocol logic separated into `protocol.py` for maintainability.
+
+---
+
+## ✅ 2. Modular Policy Interface
+
+- Defined unified policy interface: `predict_action(obs_dict)`
+- Integrated strategies so far:
+  - `NearestTaskPolicy` (greedy, no training required)
+  - `DiffusionPolicyWrapperAdapter` (Stanford's DP for `pusht_lowdim`)
+- Agents use injected policies for real-time movement decision.
+
+---
+
+## ✅ 3. Diffusion Policy Integration
+
+- Loaded pretrained checkpoint: `pusht_lowdim` from official DP repository
+- Constructed obs vector of shape `(2, 20)` and passed through model
+- Parsed predicted outputs as absolute position sequences `(8, 2)`
+- Implemented correct motion control: `delta = predicted_pos - current_pos`, with movement clipping
+
+---
+
+## 🚨 4. Identified Key Issue
+
+- Model outputs are in the PushT environment’s coordinate system (e.g., x ∈ [10, 40], y ∈ [60, 90])
+- Our PyBullet simulation uses x, y ∈ [−2, 2]
+- This mismatch leads to invalid or wildly misaligned movements
+
+---
+
+## ✅ 5. Planned Solution
+
+Train a custom low-dimensional **Diffusion Policy model** using our PyBullet environment.
+
+### Action Plan:
+
+1. Implement `data_collector.py` to record:
+   - `(obs_seq, future_pos)` trajectories
+   - Standard format: `(T_obs=2, obs_dim=20)` → `(T_action=8, pos_dim=2)`
+2. Build dataset in `.zarr` or `.npy` format compatible with DP
+3. Train using `train_diffusion_unet_lowdim_workspace.yaml` with modified config
+4. Integrate and evaluate policy in the same MCP framework
+5. Later: add PPO or ICBT policy modules for cross-strategy comparison
+
+---
+
+## 🔁 Strategy Training Summary
+
+| Strategy              | Needs Training? | Notes                            |
+|-----------------------|------------------|----------------------------------|
+| NearestTaskPolicy     | ❌               | Rule-based, greedy distance      |
+| Rule-based            | ❌               | Manual logic                     |
+| Diffusion Policy (DP) | ✅               | Requires data from PyBullet      |
+| PPO / ICBT            | ✅               | Requires environment + reward    |
+
+All strategies conform to a common interface and can be switched dynamically at runtime.
+
