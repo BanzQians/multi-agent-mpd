@@ -474,3 +474,41 @@ Train a custom low-dimensional **Diffusion Policy model** using our PyBullet env
 
 All strategies conform to a common interface and can be switched dynamically at runtime.
 
+# Multi-Agent MCP + Diffusion Policy: Training Summary (2025.06.04)
+
+## ✅ Objectives of This Stage
+- Integrate the official Diffusion Policy codebase into our custom MCP-based multi-agent task.
+- Successfully train a conditional diffusion model on a low-dimensional pushing task in the PyBullet simulation.
+
+## 🧪 Experimental Setup
+- **Task**: `pybullet_mcp_lowdim`
+- **Model**: `ConditionalUnet1D` (official architecture)
+- **Observation shape**: (2, 20)
+- **Action shape**: (8, 2)
+- **Config used**: `train_pybullet_mcp_workspace.yaml`
+- **Epochs**: 200 (reduced from the original default of 5000)
+- **Learning rate scheduler**: Cosine with warmup (500 steps)
+- **EMA**: Enabled
+
+## ✅ Training Results
+- Full training pipeline executed without errors.
+- Tracked using [Weights & Biases](https://wandb.ai/yinq012-karlsruhe-institute-of-technology/diffusion_policy_debug/runs/6mbwjc74).
+- Training loss converged quickly; `train_action_mse_error` dropped from ~4.5 to nearly 0.
+- Cosine learning rate schedule visualized and consistent with expectations.
+- Outputs saved under:data/outputs/2025.06.04/19.44.31_train_diffusion_unet_lowdim_pybullet_mcp_lowdim/
+
+## 🧠 Key Takeaways
+- Integration between the original DP codebase and our MCP environment was successful.
+- No significant compatibility issues with the dataset or training script.
+- GPU memory usage and disk space need monitoring due to model size and logging.
+
+## 📌 Next Steps
+- Convert the trained model into a `DiffusionPolicyWrapper` class compatible with our multi-agent PyBullet simulator.
+- Integrate this wrapper into the existing communication + action execution pipeline.
+- Run evaluations and ablation comparisons with other strategies (e.g., PPO, rule-based).
+- Prepare for initial paper draft and experimental benchmarks.
+
+---
+
+Author: Qian Yin  
+Date: June 4, 2025

@@ -1,1 +1,18 @@
 venv_mpd/
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Checkpoints and logs
+*.ckpt
+*.pt
+*.pth
+*.log
+*.jsonl
+
+# W&B offline logs
+wandb/
+
+# Data
+data/outputs/
+data/pybullet_mcp_lowdim/*.npz
