@@ -11,6 +11,7 @@ class Protocol:
         self.task_name_map = task_name_map
         self.claims = []
         self.responses = []
+        self.assigned_tasks = set()
 
     def receive_claims(self):
         self.claims.clear()
@@ -55,28 +56,42 @@ class Protocol:
                 all_success = False
                 continue
 
+            # Check if task is already assigned
+            if agent.task in self.assigned_tasks:
+                print(f"[REJECTED] {agent.name}'s claim for {self.task_name_map[agent.task]} — task already assigned.")
+                agent.success = False
+                agent.priority += 1
+                agent.assign_task(exclude_list=[agent.task])
+                all_success = False
+                continue
+
             outcome = next((r for r in self.responses if r["to"] == agent.name and r["task"] == agent.task), None)
 
             if outcome is None:
-                # Fallback: no one rejected and task still in pool
-                taken = any(a.name != agent.name and a.task == agent.task for a in self.agents.values())
+                # Fallback: no response, assume accepted if task not taken
+                taken = any(
+                    a.name != agent.name and a.task == agent.task and a.success
+                    for a in self.agents.values()
+                )
                 agent.success = not taken
                 if agent.success:
-                    print(f"[ASSUME] {agent.name} assumes success on {self.task_name_map[agent.task]}")
+                    print(f"[ASSUME] {agent.name} assumes claim success for {self.task_name_map[agent.task]}")
             else:
                 agent.success = (outcome["result"] == "accepted")
-                status = "accepted" if agent.success else "rejected"
-                print(f"[{status.upper()}] {agent.name}'s claim for {self.task_name_map[agent.task]}")
+                status = "ACCEPTED" if agent.success else "REJECTED"
+                print(f"[{status}] {agent.name}'s claim for {self.task_name_map[agent.task]}")
 
-            if agent.success and agent.task in self.task_pool:
-                self.task_pool.remove(agent.task)
-            elif not agent.success:
+            if agent.success:
+                self.assigned_tasks.add(agent.task)
+                if agent.task in self.task_pool:
+                    self.task_pool.remove(agent.task)
+            else:
                 agent.priority += 1
-                agent.assign_task(exclude_list=[agent.task] if agent.task else None)
-                agent.task = agent.task  # new assigned
+                agent.assign_task(exclude_list=[agent.task])
                 all_success = False
 
         return all_success
+
 
     def _distance(self, agent_name, task_id):
         agent = self.agents[agent_name]

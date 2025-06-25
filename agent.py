@@ -20,6 +20,7 @@ class Agent:
         self.priority = 1
         self.task_pool = []
         self.obs_buffer = deque(maxlen=2)  # save two history predictions
+        self.reached_goal = False
 
     def set_task_pool(self, task_pool):
         self.task_pool = task_pool
@@ -38,13 +39,21 @@ class Agent:
     
     def update_obs(self):
         pos, _ = p.getBasePositionAndOrientation(self.id)
-        obs = np.zeros(20)  # 20维 obs：你可以按需补充其他维度
+        obs = np.zeros(20)  # 20 dim
         obs[:2] = np.array(pos[:2])
         self.obs_buffer.append(obs)
 
     def get_obs_sequence(self):
+        """
+        Return the last two observations in the buffer.
+        If there are fewer than 2, pad by repeating the last one.
+        Returns:
+            np.ndarray of shape (2, obs_dim)
+        """
+        if len(self.obs_buffer) == 0:
+            raise ValueError("Observation buffer is empty.")
         if len(self.obs_buffer) < 2:
-            # 用当前帧重复填充
             return np.stack([self.obs_buffer[-1]] * 2)
-        return np.stack(self.obs_buffer)
+        return np.stack(self.obs_buffer[-2:])
+
 
