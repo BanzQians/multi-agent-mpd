@@ -1,0 +1,85 @@
+## Multi-Agent Communication & Control Project Plan
+
+### 🌟 Project Vision
+
+This project aims to develop a **fully decentralized multi-agent system**, where each agent has autonomous decision-making and control capabilities. Coordination is achieved via a structured communication protocol (MCP), enabling agents to handle task assignment, conflict resolution, and collaborative execution without centralized supervision.
+
+> Goal: A scalable, explainable, and plug-and-play framework for distributed multi-agent cooperation.
+
+---
+
+### 🔧 System Architecture
+
+Each agent consists of three modules:
+
+* **Perception**: Observe its environment and task states
+* **Policy**: Select actions via plug-in strategies (Rule-based, PPO, Diffusion Policy)
+* **Protocol**: Handle communication (claim, response, assist, etc.) with other agents
+
+A central **Protocol Module** mediates structured messages but does not control behavior.
+
+---
+
+### 🗺️ Stage-wise Development Plan
+
+#### ✏️ Stage 0: Baseline Setup ✓ (Completed)
+
+* Build PyBullet environment with 3 agents and 3 objects
+* Implement NearestTask policy with direct movement control
+* Enable policy abstraction and action execution loop
+
+#### ⟳ Stage 1: MCP Protocol v1 ✓ (Completed)
+
+* Implement claim/response protocol for decentralized task allocation
+* Allow multi-round retry if claim fails
+* Support dynamic reassignment and priority-based conflict resolution
+
+#### 🧩 Stage 2: Diffusion Policy Integration ✓ (Completed)
+
+* Integrate Diffusion Policy into agent framework
+* Wrap model outputs for real-time action control
+* Run preliminary evaluations (identified performance gaps)
+
+#### 🔄 Stage 3: Collaborative Tasks + Protocol Expansion (In Progress)
+
+* Define collaborative task (e.g., two agents moving one object)
+* Add new message types: `request_assist`, `ack_assist`, `sync_start`
+* Implement synchronized multi-agent execution and waiting logic
+
+#### 🧠 Stage 4: Communication-Aware Policy Learning (Planned)
+
+* Train PPO (or other RL) with inputs: observation + received messages
+* Compare performance: Rule-based vs PPO vs Diffusion Policy
+* Evaluate on:
+
+  * Task success rate
+  * Conflict resolution efficiency
+  * Communication overhead
+
+#### 🌐 Stage 5: Emergent Behavior + Paper Writing (Final Stage)
+
+* Demonstrate emergent coordination: dynamic division of labor without central control
+* Visualizations:
+
+  * Communication graph
+  * Timeline-based event display
+  * Agent trajectories
+* Draft and submit paper:
+
+  * MCP design
+  * System architecture
+  * Strategy comparison
+  * Coordination & emergence analysis
+
+---
+
+### 📌 Final Deliverables
+
+| Capability               | Description                                                   |
+| ------------------------ | ------------------------------------------------------------- |
+| Decentralized Control    | Agents handle task decisions and execution independently      |
+| Structured Communication | Claim, response, assist, and synchronization support          |
+| Policy Modularity        | Switchable: Rule-based, PPO, DiffusionPolicy                  |
+| Extensible Task Design   | Scenarios: solo tasks, conflicting tasks, collaborative tasks |
+| Visualization & Logging  | Support for experiment replay and debugging                   |
+| Research Publication     | Target CoRL 2025 / NeurIPS workshop                           |
