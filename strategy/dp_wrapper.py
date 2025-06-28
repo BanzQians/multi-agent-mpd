@@ -71,7 +71,7 @@ class DiffusionPolicyWrapper:
         assert isinstance(action_pred, dict) and 'action' in action_pred
         action_np = action_pred['action'].cpu().numpy()[0]  # shape: (action_dim,)
 
-        print(f"[DP] Action predicted from input of shape {obs_tensor.shape}: {action_np}")
+        # print(f"[DP] Action predicted from input of shape {obs_tensor.shape}: {action_np}")
         return action_np
 
 

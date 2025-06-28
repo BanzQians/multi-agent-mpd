@@ -16,3 +16,4 @@ wandb/
 # Data
 data/outputs/
 data/pybullet_mcp_lowdim/*.npz
+isaac_lab/IsaacLab/

@@ -10,7 +10,7 @@ def score(agent, task_id):
     return -distance + 1.0 * task_value
 
 class Agent:
-    def __init__(self, name, agent_id, task_name_map, policy):
+    def __init__(self, name, agent_id, task_name_map, policy, task_type_map):
         self.name = name
         self.id = agent_id
         self.task_name_map = task_name_map
@@ -21,6 +21,7 @@ class Agent:
         self.task_pool = []
         self.obs_buffer = deque(maxlen=2)  # save two history predictions
         self.reached_goal = False
+        self.task_type_map = task_type_map
 
     def set_task_pool(self, task_pool):
         self.task_pool = task_pool
@@ -30,7 +31,7 @@ class Agent:
             exclude_list = []
 
         available = [obj_id for obj_id in self.task_pool if obj_id not in exclude_list]
-        self.task = self.policy.choose(self,  available)
+        self.task = self.policy.choose(self, available)
 
         if not available:
             print(f"[WARNING] {self.name} found no available task (exclude_list = {exclude_list})")

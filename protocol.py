@@ -9,9 +9,14 @@ class Protocol:
         self.agents = agents
         self.task_pool = task_pool
         self.task_name_map = task_name_map
+        self.messages = []
         self.claims = []
         self.responses = []
         self.assigned_tasks = set()
+        self.assist_requests = []
+        self.assist_responses = []
+        self.sync_messages = []
+        self.message_timeout = 2.0 
 
     def receive_claims(self):
         self.claims.clear()
@@ -98,3 +103,61 @@ class Protocol:
         agent_pos, _ = p.getBasePositionAndOrientation(agent.id)
         task_pos, _ = p.getBasePositionAndOrientation(task_id)
         return np.linalg.norm(np.array(agent_pos) - np.array(task_pos))
+    
+    def create_request_assist(self, sender, task, urgency=1, ttl=3.0):
+        return {
+            "type": "request_assist",
+            "sender": sender,
+            "task": task,
+            "urgency": urgency,
+            "timestamp": time.time(),
+            "ttl": ttl
+        }
+
+    def create_ack_assist(self, sender, to, agree=True):
+        return {
+            "type": "ack_assist",
+            "sender": sender,
+            "to": to,
+            "agree": agree,
+            "timestamp": time.time()
+        }
+
+    def create_sync_start(self, sender, task):
+        return {
+            "type": "sync_start",
+            "sender": sender,
+            "task": task,
+            "timestamp": time.time()
+        }
+    
+    def cleanup_expired_messages(self):
+        current_time = time.time()
+        def is_valid(msg):
+            return "ttl" not in msg or (current_time - msg["timestamp"] < msg["ttl"])
+
+        self.assist_requests = list(filter(is_valid, self.assist_requests))
+        self.assist_responses = list(filter(is_valid, self.assist_responses))
+        self.sync_messages = list(filter(is_valid, self.sync_messages))
+    
+    def send(self, receiver_name, msg_dict):
+        msg = {
+            "to": receiver_name,
+            "from": msg_dict.get("from", "unknown"),
+            "type": msg_dict["type"],
+            "task_id": msg_dict["task_id"]
+        }
+        self.messages.append(msg)
+
+    
+    def recv(self, receiver_name):
+        """
+        Return all messages intended for the specified agent.
+        """
+        inbox = []
+        for msg in self.messages:
+            if msg["to"] == receiver_name:
+                inbox.append(msg)
+        return inbox
+
+
