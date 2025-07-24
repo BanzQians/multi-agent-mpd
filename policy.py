@@ -35,10 +35,16 @@ class NearestTaskPolicy:
             actions: np.ndarray of shape (8, 2) — repeated identical direction steps
         """
         if agent.task is None:
+            print(f"[WARN] {agent.name} has no task assigned.")
             return np.zeros((8, 2))  # No task → stay still
 
+        task_id = agent.get_effective_task()
+        if task_id is None:
+            print(f"[ERROR] {agent.name} has no effective task!")
+            return np.zeros((8, 2))
+
         agent_pos, _ = p.getBasePositionAndOrientation(agent.id)
-        task_pos, _ = p.getBasePositionAndOrientation(agent.task)
+        task_pos, _ = p.getBasePositionAndOrientation(task_id)
 
         agent_xy = np.array(agent_pos[:2])
         obj_xy = np.array(task_pos[:2])
@@ -48,7 +54,11 @@ class NearestTaskPolicy:
 
         step = direction * 0.05  # max step size
         actions = np.tile(step, (8, 1))
+
+        # print(f"[DEBUG] {agent.name} | pos: {agent_xy}, target: {obj_xy}, step: {step}")
+
         return actions
+
 
 class DiffusionPolicyStub(BasePolicy):
     def choose(self, agent, task_pool):
